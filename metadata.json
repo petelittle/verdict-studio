@@ -1,0 +1,6 @@
+{
+  "name": "Verdict Studio",
+  "description": "Interactive evaluation workbench for the Gemini Decisions API (gemini-decision-1) with calibrated noul, choice, and score evaluations over shared multimodal inputs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
