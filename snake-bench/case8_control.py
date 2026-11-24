@@ -144,11 +144,13 @@ def build_payload():
                     "You are advising the snake's rules for this one step. "
                     "Choose the move the snake should take now."
                 ),
-                "options": [
-                    {"key": c["move"],
-                     "description": f"Step {c['move']} to {c['cell'][0]},{c['cell'][1]}"}
-                    for c in CANDIDATES
-                ],
+                # Wire format (verdict-studio's buildApiQuestionsObject):
+                # a choice question carries `criteria`, a map of option
+                # key -> description, keys in UTF-8 byte order.
+                "criteria": {
+                    c["move"]: f"Step {c['move']} to {c['cell'][0]},{c['cell'][1]}"
+                    for c in sorted(CANDIDATES, key=lambda c: c["move"])
+                },
             },
             "in_trouble": {
                 "type": "noul",
@@ -158,6 +160,15 @@ def build_payload():
                     "rather than ordinary progress. 0 = certainly fine, "
                     "1 = certainly in trouble."
                 ),
+                "criteria": {
+                    "true_description": (
+                        "The run is heading for death or an endless stall "
+                        "(Limbo) rather than ordinary progress."
+                    ),
+                    "false_description": (
+                        "The run is making ordinary, healthy progress."
+                    ),
+                },
             },
         },
     }
