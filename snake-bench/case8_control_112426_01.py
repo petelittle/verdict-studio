@@ -10,12 +10,15 @@ mulberry32 seed 7, snapshot mid-hunt; clerk's facts verified by analyze().
 
 What this file is:
   The exam paper for Case 8 as a runnable Python draft. Running it prints
-  the exact payload that would be sent to the judge (dry run). Running it
-  with --call sends the payload to the Gemini Decisions API
-  (gemini-decision-1) through the registered connector helper.
+  the exact payload that would be sent to the judge (dry run).
 
-  python3 case8_control.py            # print the payload, call nobody
-  python3 case8_control.py --call     # ask the judge
+  python3 case8_control_112426_01.py           # print the payload, call nobody
+  python3 case8_control_112426_01.py --call    # ask via Jolly's connector (her VM)
+  python3 case8_control_112426_01.py --direct  # ask directly, key from env/.env (any machine)
+
+  Naming: case + description + date (mmddyy) + serial. The serial counts
+  prompt versions (the payload), not runs and not plumbing: _01 is the
+  paper as first sat (Gemini, Arm A, 24 Nov 2026 — passed both questions).
 
 The marking key (TRUTH, below) is NEVER sent to the judge. It lives in
 this file for the marker only — the same separation as the bench itself:
@@ -26,8 +29,11 @@ Q2 (trouble Noul, calibration scored).
 """
 
 import json
+import os
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 
 # Which semantics arm to sit. 'A' = field glosses only (fairness, not
 # coaching). 'B' = the same packet plus the full algorithm brief.
@@ -187,12 +193,61 @@ TRUTH = {
 }
 
 
+def load_api_key():
+    """The judge's key, for --direct mode: GEMINI_API_KEY from the
+    environment, or from a .env file beside this script or in the
+    working directory. The key is typed by Pete on the machine that
+    runs the file; it never travels in chat and is never committed
+    (.gitignore covers .env)."""
+    if os.environ.get("GEMINI_API_KEY"):
+        return os.environ["GEMINI_API_KEY"]
+    here = os.path.dirname(os.path.abspath(__file__))
+    for path in (os.path.join(here, ".env"), os.path.join(os.getcwd(), ".env")):
+        if os.path.exists(path):
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("GEMINI_API_KEY="):
+                        return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return None
+
+
+def call_direct(payload):
+    key = load_api_key()
+    if not key:
+        print("No GEMINI_API_KEY found in the environment or a .env file.",
+              file=sys.stderr)
+        return 2
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        "https://generativelanguage.googleapis.com/v1beta/decisions",
+        data=data, method="POST")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("x-goog-api-key", key)
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args):
+            raise RuntimeError("redirect refused, verify the endpoint")
+
+    try:
+        with urllib.request.build_opener(NoRedirect()).open(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            print(json.dumps({"http_status": resp.status, "result": result}, indent=2))
+            return 0
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        print(json.dumps({"http_status": e.code, "error_body": body[:2000]}, indent=2))
+        return 1
+
+
 def main():
     payload = build_payload()
+    if "--direct" in sys.argv:
+        return call_direct(payload)
     if "--call" not in sys.argv:
         print(json.dumps(payload, indent=2))
-        print("\n(dry run — nobody was asked. --call sends this to the judge.)",
-              file=sys.stderr)
+        print("\n(dry run — nobody was asked. --call asks via Jolly's connector; "
+              "--direct asks with a local key.)", file=sys.stderr)
         return 0
     proc = subprocess.run(
         ["python3", HELPER, "call"],
